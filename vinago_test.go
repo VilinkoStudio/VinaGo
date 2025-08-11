@@ -1,7 +1,7 @@
 package vinago_test
 
 import (
-	"VinaGo"
+	"github.com/VilinkoStudio/VinaGo"
 	"fmt"
 	"testing"
 )
