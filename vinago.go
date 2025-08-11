@@ -2,26 +2,149 @@ package vinago
 
 import (
 	"fmt"
-	"strconv"
+	"reflect"
 	"strings"
 )
+type VinaInt=int64
+type VinaString=string
+type VinaFloat=float64
 
-// Keys里面的值
-type Value struct {
-	Type  string
-	Value interface{}
-}
-
-// Keys
-type Keys struct {
+// 字符串类型
+type strObject struct {
 	Name  string
-	Value Value
+	Value VinaString
 }
 
-// 最大的Obj
+func (so strObject) String() string {
+	return fmt.Sprintf(`%s("%s")`, so.Name, so.Value)
+}
+
+// 整数类型
+type intObject struct {
+	Name  string
+	Value VinaInt
+}
+
+func (io intObject) String() string {
+	return fmt.Sprintf("%s(%d)", io.Name, io.Value)
+}
+
+// 浮点数类型
+type floatObject struct {
+	Name  string
+	Value VinaFloat
+}
+
+func (fo floatObject) String() string {
+	return fmt.Sprintf("%s(%g)", fo.Name, fo.Value)
+}
+
+type VinaValue = fmt.Stringer
+
+// 嵌套类型
 type Object struct {
-	Name string
-	Keys []Keys
+	Name   string
+	Values []VinaValue
+}
+
+func (oo *Object) String() string {
+	var values []string
+	for _, value := range oo.Values {
+		values = append(values, value.String())
+	}
+	return fmt.Sprintf("%s{%s}", oo.Name, strings.Join(values, ","))
+}
+
+// 添加通用的内容
+func (oo *Object) addElement(obj VinaValue) *Object {
+	oo.Values = append(oo.Values, obj)
+	return oo
+}
+
+// ObjectBuilder 构造Object树
+type ObjectBuilder struct {
+	Object
+}
+
+func NewObjectBuilder(name string) *ObjectBuilder {
+	return &ObjectBuilder{
+		Object: Object{
+			Name:   name,
+			Values: []VinaValue{},
+		},
+	}
+}
+func (obj *ObjectBuilder) AddIntKey(name string, value VinaInt) *ObjectBuilder {
+	obj.addElement(intObject{Name: name, Value: value})
+	return obj
+}
+
+func (obj *ObjectBuilder) AddStringKey(name string, value VinaString)*ObjectBuilder {
+	obj.addElement(strObject{Name: name, Value: value})
+	return obj
+}
+
+func (obj *ObjectBuilder) AddFloatKey(name string, value VinaFloat) *ObjectBuilder {
+	obj.addElement(floatObject{Name: name, Value: value})
+	return obj
+}
+func (obj *ObjectBuilder) AddKey(name string, value any) *ObjectBuilder {
+	switch v := value.(type) {
+	case int:
+		obj.AddIntKey(name, VinaInt(v))
+	case int8:
+		obj.AddIntKey(name, VinaInt(v))
+	case int16:
+		obj.AddIntKey(name, VinaInt(v))
+	case int32:
+		obj.AddIntKey(name, VinaInt(v))
+	case int64:
+		obj.AddIntKey(name, VinaInt(v))
+	case uint:
+		obj.AddIntKey(name, VinaInt(v))
+	case uint8:
+		obj.AddIntKey(name, VinaInt(v))
+	case uint16:
+		obj.AddIntKey(name, VinaInt(v))
+	case uint32:
+		obj.AddIntKey(name, VinaInt(v))
+	case uint64:
+		obj.AddIntKey(name, VinaInt(v))
+	case string:
+		obj.AddStringKey(name, VinaString(v))
+	case float64:
+		obj.AddFloatKey(name, VinaFloat(v))
+	case float32:
+		obj.AddFloatKey(name, VinaFloat(v))
+	default:
+		panic(fmt.Sprintf("Unsupported type: %T", v))
+	}
+	return obj
+}
+func (obj *ObjectBuilder) SerializeStruct(input any) *ObjectBuilder {
+	Type := reflect.TypeOf(input)
+	if Type.Kind() != reflect.Struct {
+		panic("Input must be a struct")
+	}
+	Value := reflect.ValueOf(input)
+	for i := 0; i < Type.NumField(); i++ {
+		field := Type.Field(i)
+		if field.PkgPath != "" { // unexported field, skip
+			continue
+		}
+		fieldValue := Value.Field(i)
+		obj.AddKey(field.Name, fieldValue.Interface())
+	}
+	return obj
+}
+func (obj *ObjectBuilder) SerializeMap(input map[string]any) *ObjectBuilder {
+	for key, value := range input {
+		obj.AddKey(key, value)
+	}
+	return obj
+}
+func (obj *ObjectBuilder) Build() Object {
+	return obj.Object
 }
 
 // vina树
@@ -29,123 +152,32 @@ type Vina struct {
 	Objects []Object
 }
 
-func NewInt(val int) Value {
-	return Value{Type: "int", Value: val}
-}
-
-func NewString(val string) Value {
-	return Value{Type: "string", Value: val}
-}
-
-func NewFloat(val float64) Value {
-	return Value{Type: "float", Value: val}
-}
-
-// Object 构造函数
-func NewObject(name string) *Object {
-	return &Object{
-		Name: name,
-		Keys: make([]Keys, 0),
+func (v *Vina) String() string {
+	var objs []string
+	for _, obj := range v.Objects {
+		objs = append(objs, obj.String())
 	}
-}
-
-func (obj *Object) AddKey(name string, value Value) *Object {
-	obj.Keys = append(obj.Keys, Keys{Name: name, Value: value})
-	return obj
-}
-
-// Vina 构造函数
-func NewVina() *Vina {
-	return &Vina{
-		Objects: make([]Object, 0),
-	}
-}
-
-func (vf *Vina) AddObject(obj Object) *Vina {
-	vf.Objects = append(vf.Objects, obj)
-	return vf
-}
-
-func (val Value) String() string {
-	switch val.Type {
-	case "int":
-		return strconv.Itoa(val.Value.(int))
-	case "string":
-		return fmt.Sprintf(`"%s"`, val.Value.(string))
-	case "float":
-		return strconv.FormatFloat(val.Value.(float64), 'f', -1, 64)
-	default:
-		return ""
-	}
-}
-
-func (key Keys) String() string {
-	return fmt.Sprintf("%s(%s)", key.Name, key.Value.String())
-}
-
-func (obj Object) String() string {
-	var Keys []string
-	for _, Key := range obj.Keys {
-		Keys = append(Keys, Key.String())
-	}
-	return fmt.Sprintf("%s{%s}", obj.Name, strings.Join(Keys, ","))
-}
-
-// 新建vina
-func (vi Vina) String() string {
-	var objects []string
-	for _, obj := range vi.Objects {
-		objects = append(objects, obj.String())
-	}
-	return strings.Join(objects, "\n")
-}
-
-// ObjectBuilder 构造Object树
-type ObjectBuilder struct {
-	object *Object
-}
-
-func NewObjectBuilder(name string) *ObjectBuilder {
-	return &ObjectBuilder{
-		object: NewObject(name),
-	}
-}
-
-func (obj *ObjectBuilder) AddIntKey(name string, value int) *ObjectBuilder {
-	obj.object.AddKey(name, NewInt(value))
-	return obj
-}
-
-func (obj *ObjectBuilder) AddStringKey(name string, value string) *ObjectBuilder {
-	obj.object.AddKey(name, NewString(value))
-	return obj
-}
-
-func (obj *ObjectBuilder) AddFloatKey(name string, value float64) *ObjectBuilder {
-	obj.object.AddKey(name, NewFloat(value))
-	return obj
-}
-
-func (obj *ObjectBuilder) Build() Object {
-	return *obj.object
+	return strings.Join(objs, "\n")
 }
 
 // VinaBuilder 构造整个vina树
 type VinaBuilder struct {
-	vina *Vina
+	Vina
 }
 
 func CreateVinaBuilder() *VinaBuilder {
 	return &VinaBuilder{
-		vina: NewVina(),
+		Vina: Vina{
+			Objects: []Object{},
+		},
 	}
 }
 
 func (vi *VinaBuilder) AddObject(obj Object) *VinaBuilder {
-	vi.vina.AddObject(obj)
+	vi.Vina.Objects = append(vi.Vina.Objects, obj)
 	return vi
 }
 
 func (vi *VinaBuilder) Build() Vina {
-	return *vi.vina
+	return vi.Vina
 }
